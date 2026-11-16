@@ -18,10 +18,42 @@ jobs:
         id: proj
         run: |
           ZIP=$(ls MyDeenAndroid-v*.zip 2>/dev/null | sed -E 's/^MyDeenAndroid-v([0-9]+).*/\1 &/' | sort -n | tail -n 1 | cut -d' ' -f2-)
-          if [ -n "$ZIP" ]; then
-            echo "Using zip: $ZIP"
-            rm -rf proj && mkdir proj
-            unzip -q "$ZIP" -d proj
-            SETTINGS=$(find proj -name settings.gradle.kts | head -n 1)
-            if [ -z "$SETTINGS" ]; then
-              echo "::error::No settings.gradle.kts found inside $ZIP"
+          rm -rf proj
+          mkdir proj
+          if [ -n "$ZIP" ]; then unzip -q "$ZIP" -d proj; elif [ -d MyDeenAndroid ]; then cp -r MyDeenAndroid/. proj/; else echo "::error::No MyDeenAndroid-v*.zip or MyDeenAndroid folder in the repo"; exit 1; fi
+          SETTINGS=$(find proj -name settings.gradle.kts | head -n 1)
+          test -n "$SETTINGS" || { echo "::error::settings.gradle.kts not found"; exit 1; }
+          echo "dir=$(dirname "$SETTINGS")" >> "$GITHUB_OUTPUT"
+          echo "source=${ZIP:-MyDeenAndroid folder}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Accept Android SDK licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.13
+
+      - name: Build debug APK
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Name the APK
+        run: cp "${{ steps.proj.outputs.dir }}"/app/build/outputs/apk/debug/*.apk MyDeen.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MyDeen-debug-apk
+          path: MyDeen.apk
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: My Deen build ${{ github.run_number }}
+          body: Built from ${{ steps.proj.outputs.source }}
+          files: MyDeen.apk
