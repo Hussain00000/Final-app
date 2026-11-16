@@ -1,7 +1,13 @@
-name: Build My Deen Status APK
+name: Build My Deen APK and Release
+
 on:
   push:
+    branches: ['**']
   workflow_dispatch:
+
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -11,35 +17,11 @@ jobs:
       - name: Find or unpack the project
         id: proj
         run: |
-          if [ -f settings.gradle.kts ]; then
-            echo "dir=." >> "$GITHUB_OUTPUT"
-          elif [ -f MyDeenStatus_project.zip ]; then
-            mkdir -p proj
-            unzip -q MyDeenStatus_project.zip -d proj
-            echo "dir=proj" >> "$GITHUB_OUTPUT"
-          else
-            echo "::error::Neither settings.gradle.kts nor MyDeenStatus_project.zip found in the repo root."
-            exit 1
-          fi
-          ls -la
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-
-      - name: Accept Android SDK licenses
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 8.7
-
-      - name: Build debug APK
-        working-directory: ${{ steps.proj.outputs.dir }}
-        run: gradle assembleDebug --no-daemon --stacktrace
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: MyDeenStatus-debug-apk
-          path: ${{ steps.proj.outputs.dir }}/app/build/outputs/apk/debug/*.apk
+          ZIP=$(ls MyDeenAndroid-v*.zip 2>/dev/null | sed -E 's/^MyDeenAndroid-v([0-9]+).*/\1 &/' | sort -n | tail -n 1 | cut -d' ' -f2-)
+          if [ -n "$ZIP" ]; then
+            echo "Using zip: $ZIP"
+            rm -rf proj && mkdir proj
+            unzip -q "$ZIP" -d proj
+            SETTINGS=$(find proj -name settings.gradle.kts | head -n 1)
+            if [ -z "$SETTINGS" ]; then
+              echo "::error::No settings.gradle.kts found inside $ZIP"
